@@ -94,6 +94,25 @@ public class InMemoryJobQueueTest {
     }
 
     @Test
+    public void InMemoryJobQueue_DoesNotReturnInProgressJobs() {
+        var j0 = new Job<>("Test", UUID.randomUUID(), JobStatus.QUEUED, Optional.empty());
+        var j1 = new Job<>("Test", UUID.randomUUID(), JobStatus.QUEUED, Optional.empty());
+        var qu = new InMemoryJobQueue<String>();
+        qu.scheduleJob(j0);
+        qu.scheduleJob(j1);
+
+        var jobs = qu.pullJobs(Instant.MAX, 1);
+
+        Assertions.assertEquals(1, jobs.size());
+        Assertions.assertEquals(j0.id(), jobs.get(0).id());
+
+        var jobsAgain = qu.pullJobs(Instant.MAX, 1);
+
+        Assertions.assertEquals(1, jobsAgain.size());
+        Assertions.assertEquals(j1.id(), jobsAgain.get(0).id());
+    }
+
+    @Test
     public void InMemoryJobQueue_MarksAsComplete() {
         var j0 = new Job<>("Test", UUID.randomUUID(), JobStatus.QUEUED, Optional.empty());
         var qu = new InMemoryJobQueue<String>();
@@ -116,4 +135,5 @@ public class InMemoryJobQueueTest {
 
         Assertions.assertEquals(JobStatus.FAILED, job.get().getStatus());
     }
+
 }
