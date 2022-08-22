@@ -9,9 +9,9 @@ import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
-class InMemoryJobQueueTest {
+public class InMemoryJobQueueTest {
     @Test
-    void InMemoryJobQueue_SchedulesJob() {
+    public void InMemoryJobQueue_SchedulesJob() {
         var j = new Job<>("Test", UUID.randomUUID(), JobStatus.QUEUED, Optional.empty());
         var qu = new InMemoryJobQueue<String>();
         qu.scheduleJob(j);
@@ -21,7 +21,7 @@ class InMemoryJobQueueTest {
     }
 
     @Test
-    void InMemoryJobQueue_ReturnsEmpty() {
+    public void InMemoryJobQueue_ReturnsEmpty() {
         var qu = new InMemoryJobQueue<String>();
         Assertions.assertEquals(Optional.empty(), qu.getJob(UUID.randomUUID()));
     }
@@ -37,7 +37,7 @@ class InMemoryJobQueueTest {
     }
 
     @Test
-    void InMemoryJobQueue_ReturnsJobsInOrder() {
+    public void InMemoryJobQueue_ReturnsJobsInOrder() {
         var j0 = new Job<>("Test", UUID.randomUUID(), JobStatus.QUEUED, Optional.empty());
         var j1 = new Job<>("Test1", UUID.randomUUID(), JobStatus.QUEUED, Optional.empty());
         var j2 = new Job<>("Test2", UUID.randomUUID(), JobStatus.QUEUED, Optional.empty());
@@ -55,9 +55,17 @@ class InMemoryJobQueueTest {
     }
 
     @Test
-    void InMemoryJobQueue_ReturnsJobsUsingCutoff() {
-        var j0 = new Job<>("Should Return", UUID.randomUUID(), JobStatus.QUEUED, Optional.of(Instant.parse("2022-01-01T00:00:00.000Z")));
-        var j1 = new Job<>("Should Not Return", UUID.randomUUID(), JobStatus.QUEUED, Optional.of(Instant.parse("2022-01-01T05:00:00.000Z")));
+    public void InMemoryJobQueue_ReturnsJobsUsingCutoff() {
+        var j0 = new Job<>(
+                "Should Return",
+                UUID.randomUUID(),
+                JobStatus.QUEUED,
+                Optional.of(Instant.parse("2022-01-01T00:00:00.000Z")));
+        var j1 = new Job<>(
+                "Should Not Return",
+                UUID.randomUUID(),
+                JobStatus.QUEUED,
+                Optional.of(Instant.parse("2022-01-01T05:00:00.000Z")));
         var qu = new InMemoryJobQueue<String>();
         qu.scheduleJob(j0);
         qu.scheduleJob(j1);
@@ -69,7 +77,7 @@ class InMemoryJobQueueTest {
     }
 
     @Test
-    void InMemoryJobQueue_RespectsMax() {
+    public void InMemoryJobQueue_RespectsMax() {
         var j0 = new Job<>("Test", UUID.randomUUID(), JobStatus.QUEUED, Optional.empty());
         var j1 = new Job<>("Test1", UUID.randomUUID(), JobStatus.QUEUED, Optional.empty());
         var j2 = new Job<>("Test2", UUID.randomUUID(), JobStatus.QUEUED, Optional.empty());
@@ -85,4 +93,27 @@ class InMemoryJobQueueTest {
         Assertions.assertEquals(new Job<>(j1.data(), j1.id(), JobStatus.IN_PROGRESS, j1.scheduledFor()), jobs.get(1));
     }
 
+    @Test
+    public void InMemoryJobQueue_MarksAsComplete() {
+        var j0 = new Job<>("Test", UUID.randomUUID(), JobStatus.QUEUED, Optional.empty());
+        var qu = new InMemoryJobQueue<String>();
+        qu.scheduleJob(j0);
+        qu.completeJob(j0.id());
+
+        var job = qu.getJob(j0.id());
+
+        Assertions.assertEquals(JobStatus.COMPLETED, job.get().getStatus());
+    }
+
+    @Test
+    public void InMemoryJobQueue_MarksAsFailed() {
+        var j0 = new Job<>("Test", UUID.randomUUID(), JobStatus.QUEUED, Optional.empty());
+        var qu = new InMemoryJobQueue<String>();
+        qu.scheduleJob(j0);
+        qu.markJobAsFailed(j0.id());
+
+        var job = qu.getJob(j0.id());
+
+        Assertions.assertEquals(JobStatus.FAILED, job.get().getStatus());
+    }
 }

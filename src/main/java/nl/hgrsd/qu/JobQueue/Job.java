@@ -5,7 +5,7 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 
-public final class Job<T> {
+public class Job<T> implements Cloneable {
     private final T data;
     private final UUID id;
     private JobStatus status;
@@ -39,14 +39,19 @@ public final class Job<T> {
     }
 
     @Override
+    public Object clone() throws CloneNotSupportedException {
+        return super.clone();
+    }
+
+    @Override
     public boolean equals(Object obj) {
         if (obj == this) return true;
         if (obj == null || obj.getClass() != this.getClass()) return false;
         var that = (Job) obj;
-        return Objects.equals(this.data, that.data) &&
-                Objects.equals(this.id, that.id) &&
-                Objects.equals(this.status, that.status) &&
-                Objects.equals(this.scheduledFor, that.scheduledFor);
+        return Objects.equals(this.data, that.data)
+                && Objects.equals(this.id, that.id)
+                && Objects.equals(this.status, that.status)
+                && Objects.equals(this.scheduledFor, that.scheduledFor);
     }
 
     @Override
@@ -56,11 +61,10 @@ public final class Job<T> {
 
     @Override
     public String toString() {
-        return "Job[" +
-                "data=" + data + ", " +
-                "id=" + id + ", " +
-                "status=" + status + ", " +
-                "scheduledFor=" + scheduledFor + ']';
+        return "Job[" + "data="
+                + data + ", " + "id="
+                + id + ", " + "status="
+                + status + ", " + "scheduledFor="
+                + scheduledFor + ']';
     }
-
 }
