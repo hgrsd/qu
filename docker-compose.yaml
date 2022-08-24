@@ -1,0 +1,15 @@
+version: '3.4'
+
+services:
+  database:
+    image: postgres:12.4
+    environment:
+      POSTGRES_USER: qu
+      POSTGRES_PASSWORD: qu
+    volumes:
+      - db:/var/lib/postgresql/data
+
+    ports:
+      - '5432:5432'
+volumes:
+    db:
