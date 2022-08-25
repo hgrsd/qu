@@ -135,5 +135,4 @@ public class InMemoryJobQueueTest {
 
         Assertions.assertEquals(JobStatus.FAILED, job.get().getStatus());
     }
-
 }

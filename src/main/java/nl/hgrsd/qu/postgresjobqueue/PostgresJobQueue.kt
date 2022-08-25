@@ -30,6 +30,7 @@ class PostgresJobQueue<T>(private val conn: Connection, private val serializer: 
         val scheduledFor = Optional.ofNullable(rs.getDate("scheduled_for")).map { it.toInstant() };
         return Job(payload, rs.getObject("job_id") as UUID, status, scheduledFor)
     }
+
     override fun scheduleJob(job: Job<T>) {
         val s = conn.prepareStatement(
             "INSERT INTO qu (job_id, scheduled_for, status, payload)" +
@@ -47,7 +48,9 @@ class PostgresJobQueue<T>(private val conn: Connection, private val serializer: 
     }
 
     override fun deleteJob(id: UUID) {
-        TODO("Not yet implemented")
+        val s = conn.prepareStatement("DELETE FROM qu WHERE job_id = ?");
+        s.setObject(1, id);
+        s.execute();
     }
 
     override fun pullJobs(cutOff: Instant, maxJobs: Int): MutableList<Job<T>> {

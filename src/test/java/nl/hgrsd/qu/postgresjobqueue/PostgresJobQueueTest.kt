@@ -18,6 +18,7 @@ fun getConnection(): Connection {
 
 @Serializable
 data class TestPayload(val content: String)
+
 internal class PostgresJobQueueTest {
     @Test
     fun postgresJobQueue_canScheduleJob() {
@@ -30,6 +31,25 @@ internal class PostgresJobQueueTest {
         Assertions.assertEquals(scheduled.data(), job.data())
         Assertions.assertEquals(scheduled.scheduledFor(), job.scheduledFor())
         Assertions.assertEquals(scheduled.status, job.status)
+    }
+
+    @Test
+    fun postgresJobQueue_returnsEmpty() {
+        val conn = getConnection();
+        val qu = PostgresJobQueue(conn, TestPayload.serializer());
+        val empty = qu.getJob(UUID.randomUUID());
+        Assertions.assertTrue(empty.isEmpty);
+    }
+
+    @Test
+    fun postgresJobQueue_deletesJob() {
+        val conn = getConnection();
+        val qu = PostgresJobQueue(conn, TestPayload.serializer());
+        val job = Job(TestPayload("hi"), UUID.randomUUID(), JobStatus.QUEUED, Optional.empty());
+        qu.scheduleJob(job);
+        qu.deleteJob(job.id())
+        val scheduled = qu.getJob(job.id());
+        Assertions.assertTrue(scheduled.isEmpty)
     }
 
 }
