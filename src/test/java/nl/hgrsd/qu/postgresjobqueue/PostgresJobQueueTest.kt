@@ -26,7 +26,7 @@ internal class PostgresJobQueueTest {
     fun clear() {
         val conn = getConnection()
         val st = conn.createStatement()
-        st.execute("DELETE FROM qu")
+        st.execute("DELETE FROM qu;")
     }
 
     @Test

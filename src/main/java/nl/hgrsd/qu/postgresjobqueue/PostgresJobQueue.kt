@@ -36,8 +36,8 @@ class PostgresJobQueue<T>(private val conn: Connection, private val serializer: 
             """
                 INSERT INTO qu 
                 (job_id, scheduled_for, status, payload)
-                VALUES (?, ?, ?, ?)
-                """
+                VALUES (?, ?, ?, ?);
+            """
         )
         s.setObject(1, job.id())
         job.scheduledFor()
@@ -66,7 +66,6 @@ class PostgresJobQueue<T>(private val conn: Connection, private val serializer: 
                     WHERE STATUS = ?
                     AND (scheduled_for IS NULL OR scheduled_for <= ?)
                     ORDER BY internal_id
-                    FOR UPDATE SKIP LOCKED
                     LIMIT ?
                 ) RETURNING *;
                 """
