@@ -46,7 +46,7 @@ public class InMemoryJobQueue<T> implements JobQueue<T> {
     @Override
     public synchronized List<Job<T>> pullJobs(Instant cutOff, int maxJobs) {
         List<Job<T>> result = new ArrayList<>();
-        var filtered = queue.values().stream()
+        var filtered = queue.values().parallelStream()
                 .filter(job -> job.getStatus() == JobStatus.QUEUED
                         && (job.scheduledFor().isEmpty()
                                 || job.scheduledFor().get().isBefore(cutOff)))
