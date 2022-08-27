@@ -34,17 +34,16 @@ class PostgresJobQueue<T>(private val ds: DataSource, private val serializer: KS
     }
 
     private fun <T> runTx(fn: (Connection) -> T): T {
-        val conn = ds.connection
-        conn.autoCommit = false
-        try {
-            val result = fn(conn)
-            conn.commit()
-            return result
-        } catch (e: Exception) {
-            conn.rollback()
-            throw e
-        } finally {
-            conn.close()
+        ds.connection.use {
+            it.autoCommit = false
+            try {
+                val result = fn(it)
+                it.commit()
+                return result
+            } catch (e: Exception) {
+                it.rollback()
+                throw e
+            }
         }
     }
 

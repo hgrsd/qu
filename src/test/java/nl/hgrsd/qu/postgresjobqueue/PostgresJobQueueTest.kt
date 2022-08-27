@@ -1,38 +1,47 @@
 package nl.hgrsd.qu.postgresjobqueue
 
+import com.zaxxer.hikari.HikariDataSource
 import kotlinx.serialization.Serializable
 import nl.hgrsd.qu.JobQueue.Job
 import nl.hgrsd.qu.JobQueue.JobStatus
 import org.junit.jupiter.api.Assertions
 import org.junit.jupiter.api.BeforeEach
 import org.junit.jupiter.api.Test
-import java.sql.Connection
-import java.sql.DriverManager
+import org.junit.jupiter.api.parallel.Execution
+import org.junit.jupiter.api.parallel.ExecutionMode
 import java.time.Instant
 import java.util.*
+import javax.sql.DataSource
 
-fun getConnection(): Connection {
-    val dburl = System.getenv("QU_DBURL")
+fun getDataSource(): DataSource {
     val pw = System.getenv("QU_DBPASSWORD")
     val un = System.getenv("QU_DBUSERNAME")
-    return DriverManager.getConnection("jdbc:${dburl}", un, pw)
+    val dburl = System.getenv("QU_DBURL")
+    val ds = HikariDataSource()
+    ds.dataSourceClassName = "org.postgresql.ds.PGSimpleDataSource"
+    ds.jdbcUrl = "jdbc:${dburl}"
+    ds.username = un
+    ds.password = pw
+    return ds
 }
 
 @Serializable
 data class TestPayload(val content: String)
 
 internal class PostgresJobQueueTest {
+    private val ds = getDataSource()
+
+
     @BeforeEach
     fun clear() {
-        val conn = getConnection()
-        val st = conn.createStatement()
+        val st = ds.connection.createStatement()
         st.execute("DELETE FROM qu;")
+        ds.connection.close()
     }
 
     @Test
     fun postgresJobQueue_canScheduleJob() {
-        val conn = getConnection()
-        val qu = PostgresJobQueue(conn, TestPayload.serializer())
+        val qu = PostgresJobQueue(ds, TestPayload.serializer())
         val job = Job(TestPayload("hi"), UUID.randomUUID(), JobStatus.QUEUED, Optional.empty())
         qu.scheduleJob(job)
         val scheduled = qu.getJob(job.id()).get()
@@ -44,16 +53,14 @@ internal class PostgresJobQueueTest {
 
     @Test
     fun postgresJobQueue_returnsEmpty() {
-        val conn = getConnection()
-        val qu = PostgresJobQueue(conn, TestPayload.serializer())
+        val qu = PostgresJobQueue(ds, TestPayload.serializer())
         val empty = qu.getJob(UUID.randomUUID())
         Assertions.assertTrue(empty.isEmpty)
     }
 
     @Test
     fun postgresJobQueue_deletesJob() {
-        val conn = getConnection()
-        val qu = PostgresJobQueue(conn, TestPayload.serializer())
+        val qu = PostgresJobQueue(ds, TestPayload.serializer())
         val job = Job(TestPayload("hi"), UUID.randomUUID(), JobStatus.QUEUED, Optional.empty())
         qu.scheduleJob(job)
         qu.deleteJob(job.id())
@@ -63,8 +70,7 @@ internal class PostgresJobQueueTest {
 
     @Test
     fun postgresJobQueue_pullsJobsInOrder() {
-        val conn = getConnection()
-        val qu = PostgresJobQueue(conn, TestPayload.serializer())
+        val qu = PostgresJobQueue(ds, TestPayload.serializer())
         val j0 = Job(TestPayload("test"), UUID.randomUUID(), JobStatus.QUEUED, Optional.empty())
         val j1 = Job(TestPayload("test1"), UUID.randomUUID(), JobStatus.QUEUED, Optional.empty())
         val j2 = Job(TestPayload("test2"), UUID.randomUUID(), JobStatus.QUEUED, Optional.empty())
@@ -103,8 +109,7 @@ internal class PostgresJobQueueTest {
 
     @Test
     fun postgresJobQueue_returnsJobsUsingCutoff() {
-        val conn = getConnection()
-        val qu = PostgresJobQueue(conn, TestPayload.serializer())
+        val qu = PostgresJobQueue(ds, TestPayload.serializer())
         val j0 = Job(
             TestPayload("should not return"),
             UUID.randomUUID(),
@@ -135,8 +140,7 @@ internal class PostgresJobQueueTest {
 
     @Test
     fun postgresJobQueue_respectsMax() {
-        val conn = getConnection()
-        val qu = PostgresJobQueue(conn, TestPayload.serializer())
+        val qu = PostgresJobQueue(ds, TestPayload.serializer())
         val j0 = Job(
             TestPayload("test"),
             UUID.randomUUID(),
@@ -182,8 +186,7 @@ internal class PostgresJobQueueTest {
 
     @Test
     fun postgresJobQueue_doesNotReturnInProgressJobs() {
-        val conn = getConnection()
-        val qu = PostgresJobQueue(conn, TestPayload.serializer())
+        val qu = PostgresJobQueue(ds, TestPayload.serializer())
         val j0 = Job(
             TestPayload("test"),
             UUID.randomUUID(),
@@ -216,8 +219,7 @@ internal class PostgresJobQueueTest {
 
     @Test
     fun postgresJobQueue_marksAsCompleted() {
-        val conn = getConnection()
-        val qu = PostgresJobQueue(conn, TestPayload.serializer())
+        val qu = PostgresJobQueue(ds, TestPayload.serializer())
         val j0 = Job(
             TestPayload("test"),
             UUID.randomUUID(),
@@ -225,15 +227,14 @@ internal class PostgresJobQueueTest {
             Optional.empty()
         )
         qu.scheduleJob(j0)
-        qu.completeJob(j0.id());
+        qu.completeJob(j0.id())
         val job = qu.getJob(j0.id()).get()
         Assertions.assertEquals(JobStatus.COMPLETED, job.status)
     }
 
     @Test
     fun postgresJobQueue_marksAsFailed() {
-        val conn = getConnection()
-        val qu = PostgresJobQueue(conn, TestPayload.serializer())
+        val qu = PostgresJobQueue(ds, TestPayload.serializer())
         val j0 = Job(
             TestPayload("test"),
             UUID.randomUUID(),
@@ -241,7 +242,7 @@ internal class PostgresJobQueueTest {
             Optional.empty()
         )
         qu.scheduleJob(j0)
-        qu.markJobAsFailed(j0.id());
+        qu.markJobAsFailed(j0.id())
         val job = qu.getJob(j0.id()).get()
         Assertions.assertEquals(JobStatus.FAILED, job.status)
     }
