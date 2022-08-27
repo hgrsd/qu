@@ -7,14 +7,16 @@ import nl.hgrsd.qu.JobQueue.JobQueue
 import nl.hgrsd.qu.JobQueue.JobStatus
 import org.postgresql.util.PGobject
 import java.lang.Error
+import java.lang.Exception
 import java.sql.Connection
 import java.sql.ResultSet
 import java.sql.Timestamp
 import java.time.Instant
 import java.util.UUID
 import java.util.Optional
+import javax.sql.DataSource
 
-class PostgresJobQueue<T>(private val conn: Connection, private val serializer: KSerializer<T>) : JobQueue<T> {
+class PostgresJobQueue<T>(private val ds: DataSource, private val serializer: KSerializer<T>) : JobQueue<T> {
     private fun deserializeJob(rs: ResultSet): Job<T> {
         val obj: PGobject = rs.getObject("payload") as PGobject
         val payload = Json.decodeFromString(serializer, obj.value.orEmpty())
@@ -31,34 +33,56 @@ class PostgresJobQueue<T>(private val conn: Connection, private val serializer: 
         return Job(payload, rs.getObject("job_id") as UUID, status, scheduledFor)
     }
 
+    private fun <T> runTx(fn: (Connection) -> T): T {
+        val conn = ds.connection
+        conn.autoCommit = false
+        try {
+            val result = fn(conn)
+            conn.commit()
+            return result
+        } catch (e: Exception) {
+            conn.rollback()
+            throw e
+        } finally {
+            conn.close()
+        }
+    }
+
     override fun scheduleJob(job: Job<T>) {
-        val s = conn.prepareStatement(
-            """
+        runTx {
+            val s = it.prepareStatement(
+                """
                 INSERT INTO qu 
                 (job_id, scheduled_for, status, payload)
                 VALUES (?, ?, ?, ?);
             """
-        )
-        s.setObject(1, job.id())
-        job.scheduledFor()
-            .ifPresentOrElse({ s.setTimestamp(2, Timestamp.from(it)) }, { s.setNull(2, java.sql.Types.NULL) })
-        s.setString(3, job.status.toString())
-        val payload = PGobject()
-        payload.type = "jsonb"
-        payload.value = Json.encodeToString(serializer, job.data())
-        s.setObject(4, payload)
-        s.execute()
+            )
+            s.setObject(1, job.id())
+            job.scheduledFor()
+                .ifPresentOrElse(
+                    { instant -> s.setTimestamp(2, Timestamp.from(instant)) },
+                    { s.setNull(2, java.sql.Types.NULL) })
+            s.setString(3, job.status.toString())
+            val payload = PGobject()
+            payload.type = "jsonb"
+            payload.value = Json.encodeToString(serializer, job.data())
+            s.setObject(4, payload)
+            s.execute()
+        }
     }
 
     override fun deleteJob(id: UUID) {
-        val s = conn.prepareStatement("DELETE FROM qu WHERE job_id = ?")
-        s.setObject(1, id)
-        s.execute()
+        runTx {
+            val s = it.prepareStatement("DELETE FROM qu WHERE job_id = ?")
+            s.setObject(1, id)
+            s.execute()
+        }
     }
 
     override fun pullJobs(cutOff: Instant, maxJobs: Int): MutableList<Job<T>> {
-        val s = conn.prepareStatement(
-            """
+        return runTx {
+            val s = it.prepareStatement(
+                """
                 UPDATE qu SET STATUS = ?
                 WHERE internal_id IN (
                     SELECT internal_id 
@@ -69,43 +93,50 @@ class PostgresJobQueue<T>(private val conn: Connection, private val serializer: 
                     LIMIT ?
                 ) RETURNING *;
                 """
-        )
-        s.setString(1, JobStatus.IN_PROGRESS.toString())
-        s.setString(2, JobStatus.QUEUED.toString())
-        s.setTimestamp(3, Timestamp.from(cutOff))
-        s.setInt(4, maxJobs)
+            )
+            s.setString(1, JobStatus.IN_PROGRESS.toString())
+            s.setString(2, JobStatus.QUEUED.toString())
+            s.setTimestamp(3, Timestamp.from(cutOff))
+            s.setInt(4, maxJobs)
 
-        val jobs = mutableListOf<Job<T>>()
-        val rs = s.executeQuery()
-        while (rs.next()) {
-            jobs.add(deserializeJob(rs))
+            val jobs = mutableListOf<Job<T>>()
+            val rs = s.executeQuery()
+            while (rs.next()) {
+                jobs.add(deserializeJob(rs))
+            }
+            return@runTx jobs
         }
-        return jobs
     }
 
     override fun completeJob(id: UUID) {
-        val s = conn.prepareStatement("UPDATE qu SET status = ? WHERE job_id = ?;")
-        s.setString(1, JobStatus.COMPLETED.toString())
-        s.setObject(2, id)
-        s.execute()
+        runTx {
+            val s = it.prepareStatement("UPDATE qu SET status = ? WHERE job_id = ?;")
+            s.setString(1, JobStatus.COMPLETED.toString())
+            s.setObject(2, id)
+            s.execute()
+        }
     }
 
     override fun markJobAsFailed(id: UUID) {
-        val s = conn.prepareStatement("UPDATE qu SET status = ? WHERE job_id = ?;")
-        s.setString(1, JobStatus.FAILED.toString())
-        s.setObject(2, id)
-        s.execute()
+        runTx { conn ->
+            val s = conn.prepareStatement("UPDATE qu SET status = ? WHERE job_id = ?;")
+            s.setString(1, JobStatus.FAILED.toString())
+            s.setObject(2, id)
+            s.execute()
+        }
     }
 
     override fun getJob(id: UUID): Optional<Job<T>> {
-        val s = conn.prepareStatement("SELECT * FROM qu WHERE job_id = ?")
-        s.setObject(1, id)
+        return runTx {
+            val s = it.prepareStatement("SELECT * FROM qu WHERE job_id = ?")
+            s.setObject(1, id)
 
-        val rs = s.executeQuery()
-        if (!rs.next()) {
-            return Optional.empty()
+            val rs = s.executeQuery()
+            if (!rs.next()) {
+                return@runTx Optional.empty()
+            }
+            return@runTx Optional.of(deserializeJob(rs))
         }
-        return Optional.of(deserializeJob(rs))
     }
 
 }
